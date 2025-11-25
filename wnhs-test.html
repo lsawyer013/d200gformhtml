@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiosk Data Entry</title>
+    <!-- Load Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
+    <!-- Use Inter font --><style>
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f3f4f6; /* Light gray background for contrast */
+        }
+    </style>
+</head>
+<body class="p-4">
+    
+    <!-- Main Kiosk Card Container --><div id="kiosk-container" class="w-full max-w-lg bg-white shadow-2xl rounded-xl p-8 md:p-12 transform transition duration-500 ease-in-out">
+        
+        <h1 class="text-4xl font-extrabold text-gray-800 mb-6 text-center">
+            North Student Services Scan-In
+        </h1>
+        <p class="text-sm text-gray-500 text-center mb-8">
+            Please scan or type your 8-digit student ID and press Enter.
+        </p>
+
+        <!-- Input Form --><form id="data-entry-form" class="space-y-6">
+            <label for="code-input" class="sr-only">8-Digit Code</label>
+            <input 
+                type="text" 
+                id="code-input" 
+                name="code-input" 
+                maxlength="8" 
+                pattern="\d{8}"
+                placeholder="Enter 8-digit code..."
+                class="w-full px-6 py-4 text-3xl text-center border-4 border-teal-400 rounded-lg focus:ring-4 focus:ring-teal-200 focus:border-teal-600 transition duration-150 shadow-inner tracking-widest outline-none"
+                autofocus
+            />
+
+            <!-- Status Message Area --><div id="status-message" class="text-center h-8">
+                <span class="text-gray-500 font-medium">Ready to scan or type...</span>
+            </div>
+            
+            <!-- Hidden Input for Date/Time - Not used, but included for form consistency --><input type="hidden" id="timestamp" name="timestamp" />
+
+            <!-- Submit Button (Hidden but required for form submission consistency) --><button type="submit" id="submit-btn" class="hidden">Submit</button>
+        </form>
+
+        <!-- Loading Indicator --><div id="loading-indicator" class="mt-4 text-center hidden">
+            <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] text-teal-500" role="status">
+                <span class="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
+            </div>
+        </div>
+
+    </div>
+    
+    <!-- Modal for Success/Error --><div id="feedback-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-75 hidden transition-opacity duration-300">
+        <div class="bg-white rounded-lg p-8 shadow-2xl max-w-sm w-full text-center">
+            <div id="modal-icon" class="text-6xl mb-4"></div>
+            <h3 id="modal-title" class="text-2xl font-bold mb-2"></h3>
+            <p id="modal-content" class="text-gray-600 mb-6"></p>
+            <button id="modal-close-btn" class="w-full px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150">
+                OK
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        // *** CONFIGURATION: These values are correctly set for your Google Form. ***
+        const GOOGLE_FORM_ACTION_URL = "https://docs.google.com/forms/u/0/d/e/1FAIpQLSdq88IfKNXjZCiuNiJRdQkzUoK9biwtmI82DEGC72R7OkR4fw/formResponse"; 
+        const CODE_ENTRY_ID = "entry.817793210"; 
+        // *************************************************************************
+
+        const inputField = document.getElementById('code-input');
+        const statusMessage = document.getElementById('status-message');
+        const form = document.getElementById('data-entry-form');
+        const feedbackModal = document.getElementById('feedback-modal');
+        const modalIcon = document.getElementById('modal-icon');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const loadingIndicator = document.getElementById('loading-indicator');
+
+        const MIN_LENGTH = 8;
+        const MAX_LENGTH = 8;
+        const SUCCESS_MODAL_TIMEOUT = 2000; // 2 seconds
+
+        // Define valid ranges as numbers for comparison
+        const VALID_RANGES = [
+            { min: 20001200, max: 20015000 },
+            { min: 30000000, max: 30099999 }
+        ];
+
+        // --- Utility Functions ---
+
+        // Function to display messages in the UI
+        function showStatus(message, type = 'info') {
+            loadingIndicator.classList.add('hidden');
+            let color = '';
+            if (type === 'success') color = 'text-green-600';
+            else if (type === 'error') color = 'text-red-600';
+            else color = 'text-gray-600';
+            statusMessage.innerHTML = `<span class="${color} font-medium">${message}</span>`;
+        }
+
+        function showLoading() {
+            statusMessage.innerHTML = '';
+            loadingIndicator.classList.remove('hidden');
+        }
+
+        // Function to show a full-screen feedback modal
+        function showModal(title, message, type) {
+            loadingIndicator.classList.add('hidden');
+            feedbackModal.classList.remove('hidden');
+            
+            let icon = '';
+            let color = '';
+
+            if (type === 'success') {
+                icon = '✅';
+                color = 'text-green-600';
+                modalCloseBtn.classList.add('hidden'); // Hide button for auto-dismiss
+                
+                // Auto-dismiss after 2 seconds for success
+                setTimeout(hideModal, SUCCESS_MODAL_TIMEOUT);
+
+            } else if (type === 'error') {
+                icon = '❌';
+                color = 'text-red-600';
+                modalCloseBtn.classList.remove('hidden'); // Show button for required click
+            } else {
+                icon = 'ℹ️';
+                color = 'text-blue-600';
+                modalCloseBtn.classList.remove('hidden'); 
+            }
+            
+            modalIcon.textContent = icon;
+            modalIcon.classList.remove('text-green-600', 'text-red-600', 'text-blue-600');
+            modalIcon.classList.add(color);
+            modalTitle.textContent = title;
+            modalContent.textContent = message;
+
+            // Only focus the close button if it's visible (i.e., not a success message)
+            if (!modalCloseBtn.classList.contains('hidden')) {
+                modalCloseBtn.focus();
+            }
+        }
+
+        function hideModal() {
+            feedbackModal.classList.add('hidden');
+            // Reset focus back to the input field after closing the modal
+            inputField.value = '';
+            inputField.focus();
+            showStatus('Ready to scan or type...');
+        }
+
+        // Add event listener to close the modal (only effective for error/info modals)
+        modalCloseBtn.addEventListener('click', hideModal);
+
+        // --- Core Validation and Submission Logic ---
+
+        // Function to check if a code number is within the defined valid ranges
+        function checkCodeRange(codeNumber) {
+            for (const range of VALID_RANGES) {
+                if (codeNumber >= range.min && codeNumber <= range.max) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Handles the submission of the data to Google Forms
+        async function submitData(code) {
+            showLoading();
+
+            // 1. Prepare data for Google Form submission
+            const formData = new URLSearchParams();
+            formData.append(CODE_ENTRY_ID, code);
+            
+            try {
+                // 2. Perform the POST request to the Google Form
+                // 'no-cors' mode is required for cross-origin submission to Google Forms from a client-side app.
+                // We rely on the fetch not throwing an error for a successful submission assumption.
+                const response = await fetch(GOOGLE_FORM_ACTION_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', 
+                    body: formData,
+                });
+
+                // The Google Sheet automatically adds the submission timestamp.
+                showModal('Success!', `Code "${code}" recorded successfully in your Google Sheet.`, 'success');
+
+            } catch (error) {
+                console.error('Submission Error:', error);
+                showModal('Error!', `Failed to submit data. Please check the network connection and the form configuration.`, 'error');
+            }
+        }
+
+        // Handle form submission triggered by pressing Enter
+        form.addEventListener('submit', function(event) {
+            event.preventDefault(); // Prevent default browser submission/reload
+
+            const code = inputField.value.trim();
+
+            // 1. Check for blank input
+            if (code === "") {
+                showStatus('Code cannot be blank.', 'error');
+                return;
+            }
+
+            // 2. Check length (8-digits)
+            if (code.length !== MAX_LENGTH) {
+                showStatus(`Invalid code. Must be exactly ${MAX_LENGTH} digits.`, 'error');
+                inputField.focus();
+                return;
+            }
+
+            // 3. Check format (numeric only)
+            if (!/^\d+$/.test(code)) {
+                showStatus('Invalid format. Code must contain only digits (0-9).', 'error');
+                inputField.focus();
+                return;
+            }
+
+            // 4. Check against valid ranges
+            const codeNumber = parseInt(code, 10);
+            if (!checkCodeRange(codeNumber)) {
+                showStatus('Invalid code. Must be in the range 20001200-20015000 or 30000000-30099999.', 'error');
+                inputField.focus();
+                return;
+            }
+
+            // 5. Data is valid, proceed to submission
+            submitData(code);
+        });
+
+        // Event listener to prevent non-digit input and limit length during typing
+        inputField.addEventListener('input', function() {
+            // Remove any non-digit characters
+            this.value = this.value.replace(/[^0-9]/g, '');
+
+            // Provide real-time feedback on length
+            if (this.value.length < MIN_LENGTH) {
+                showStatus(`Entering code... (${this.value.length}/${MAX_LENGTH})`, 'info');
+            } else if (this.value.length === MAX_LENGTH) {
+                showStatus(`Code ready. Press Enter to record.`, 'success');
+            } else {
+                 showStatus(`Maximum length reached.`, 'error');
+            }
+        });
+
+        // Ensure the input field always has focus, which is crucial for Kiosk/Scanner mode
+        function maintainFocus() {
+            if (feedbackModal.classList.contains('hidden')) {
+                 inputField.focus();
+            }
+        }
+
+        // Set interval to continuously re-focus the input field
+        setInterval(maintainFocus, 500);
+
+        // Initial setup
+        inputField.focus();
+    </script>
+
+</body>
+</html>
